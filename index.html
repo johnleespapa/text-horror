@@ -1,0 +1,245 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>해월동의 구멍 — 텍스트 호러</title>
+<style>
+body{margin:0;background:#0b0b0c;color:#d8d4cc;font:16px/1.65 "Noto Serif KR",serif}
+#w{max-width:680px;margin:auto;padding:14px}
+h1{font-size:20px;margin:4px 0;color:#eee;letter-spacing:2px}
+#stats{display:flex;flex-wrap:wrap;gap:12px;font:14px monospace;border-bottom:1px solid #333;padding:6px 0}
+.b{color:#c55}.s{color:#7aa7c7}.t{color:#999}
+#map{font:15px/1.25 monospace;background:#111;padding:8px;margin:8px 0;white-space:pre;overflow-x:auto}
+#scene{min-height:120px;white-space:pre-wrap}
+#out{color:#bba;white-space:pre-wrap;border-left:2px solid #553;padding-left:8px;margin:8px 0}
+#out:empty{display:none}
+.roll{font:13px monospace;color:#8c8}
+#ch button,#mv button,.sm{display:block;width:100%;text-align:left;background:#151517;color:#ddd;border:1px solid #333;padding:10px;margin:5px 0;font:15px inherit;border-radius:4px;cursor:pointer}
+#ch button:hover{border-color:#777}
+#ch button.h{color:#b77;border-color:#522}
+#mv{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:260px}
+#mv button{text-align:center}
+details{font-size:14px;color:#aaa;margin:6px 0}
+.end{color:#e5c07b;font-size:18px}
+.q{color:#b9a}
+</style></head><body><div id="w">
+<h1>해월동의 구멍</h1>
+<div id="stats"></div>
+<div id="map"></div>
+<div id="scene"></div><div id="out"></div>
+<div id="ch"></div>
+<div id="mv"></div>
+<details open><summary>단서 기록</summary><div id="clues"></div></details>
+<details><summary>엔딩 수집</summary><div id="ends"></div></details>
+<button class="sm" onclick="if(confirm('처음부터 다시 할까요?'))newGame()">처음부터 다시</button>
+<details><summary>도움말</summary>방향 버튼이나 방향키/WASD로 한 칸씩 이동합니다. 장소에 들어서면 사건이 일어날 수 있습니다. 판정은 d20 + 보정 ≥ 난이도(DC)이면 성공. 힘 = 공격력 기반, 정신 = 이성 기반, 관찰 = 단서·손전등 기반. 이성이 낮아지면 글자가 일그러지고 환각 선택지가 섞입니다(붉은 글씨). 턴 70이 되면 만조입니다.</details>
+</div>
+<script>
+const W=5,H=5,MAXT=70;
+const END={
+ truth:["썰물","노래를 거꾸로 불러 구멍을 닫고, 수아와 함께 아침을 맞았다. 바다는 다시 평범한 바다가 되었다. 진실 엔딩."],
+ half:["반쪽의 바다","구멍은 닫혔다. 하지만 수아는 벽 안쪽에 남았다. 매년 그 날, 방파제에 그녀의 모양이 젖어 있다."],
+ sacrifice:["대신 들어간 자리","당신은 수아를 밀어내고 그 구멍에 몸을 맞췄다. 꼭 맞았다. 처음부터 당신 자리였던 것처럼."],
+ twoescape:["둘만의 새벽","수아를 끌어내 도망쳤다. 해월동은 그 해 겨울 지도에서 사라졌다. 수아는 지금도 벽에 등을 대고 잔다."],
+ alone:["막차","당신은 막차를 탔다. 창밖의 해월동이 멀어진다. 휴대폰에 수아의 문자가 온다. '오빠 어디 가?'"],
+ mina:["작은 손","미나의 손을 잡고 막차를 탔다. 진실은 바다에 두고 왔지만, 적어도 한 아이는 구했다."],
+ caller:["부르는 자","당신은 대답했다. 이제 당신이 부른다. 밤마다, 누군가의 이름을, 아주 다정하게."],
+ spiral:["나선의 눈","이성이 바닥났다. 당신은 경로당 노인들 사이에 앉아 벽을 본다. 벽도 당신을 본다."],
+ shape:["내 모양의 구멍","당신은 당신 모양의 구멍을 찾았다. 들어가지 않을 이유가 하나도 떠오르지 않았다."],
+ dead:["차가운 바닥","몸이 버티지 못했다. 해월동의 습기가 당신을 천천히 덮었다."],
+ drown:["깊은 물","수아를 붙잡은 손이 미끄러졌다. 검은 물이 당신 둘을 안쪽으로 끌어당겼다."],
+ betray:["배신의 대가","박 씨가 동굴 어둠 속에서 나타났다. '열쇠 도둑은 바다에 바친다.' 등 뒤에서 차가운 손."],
+ tide:["만조","시간이 다 됐다. 바다가 일어서고, 해월동 전체가 하나의 커다란 구멍 속으로 기울었다."]
+};
+const CLUE={tide:"조수표: 만조에 방파제 동굴의 '큰 구멍'이 열린다.",rec:"1972년 교회 기록: 같은 실종 사건. '노래를 거꾸로 부르면 닫힌다.'",diary:"수아의 일기: '벽에 내 모양이 생겼어. 동굴에서 불러.'",song:"부름의 노래: 노인들이 부르는 노래. 거꾸로 외워 두었다.",sea:"옥상에서 본 바다: 바다 밑에 거대한 나선형 구멍이 있다."};
+let S;
+const $=id=>document.getElementById(id);
+const r20=()=>1+Math.floor(Math.random()*20);
+const has=i=>S.items.includes(i), cl=c=>S.clues.includes(c);
+function mod(st){ if(st=="힘")return S.atk-2+(S.flags.wetTrust?0:0);
+ if(st=="정신")return Math.floor(S.san/25)-1+(has("부적")?2:0)+(has("나선 조개")?2:0);
+ return Math.floor(S.clues.length/2)+(has("손전등")?2:0);}
+function check(st,dc,bonus=0){const r=r20(),m=mod(st)+bonus,ok=r==20||(r!=1&&r+m>=dc);
+ return {ok,txt:`[${st} 판정] d20=${r} ${m>=0?"+":""}${m} = ${r+m} vs DC ${dc} → ${ok?"성공":"실패"}`};}
+function addItem(i){if(!has(i))S.items.push(i);if(i=="쇠파이프")S.atk+=2;}
+function addClue(c){if(!cl(c)){S.clues.push(c);return "\n(단서 획득)";}return "";}
+function quirk(q){if(!S.quirks.includes(q)){S.quirks.push(q);if(q=="구멍난 손")S.atk--;return `\n(증상 획득: ${q})`;}return "";}
+function dmg(h,s){S.hp=Math.min(S.maxhp,S.hp-h);S.san=Math.max(0,Math.min(100,S.san-s));let t="";if(h>0)t+=` HP -${h}`;if(h<0)t+=` HP +${-h}`;if(s>0)t+=` 이성 -${s}`;if(s<0)t+=` 이성 +${-s}`;return t?"\n("+t.trim()+")":"";}
+// map
+const G={
+"0,0":["등대","녹슨 등대. 불은 꺼졌는데 렌즈가 천천히 돈다.",'sea'],
+"1,0":["해변","모래 위에 사람 모양 구멍이 수십 개. 모두 바다를 향해 누운 자세다.",'sea'],
+"2,0":["방파제","콘크리트 벽에 사람 모양 구멍이 빼곡하다. 키도, 어깨 폭도 제각각. 바람이 구멍을 지날 때 누군가 이름을 부르는 소리가 난다.",'sea'],
+"3,0":["동굴 입구","방파제 끝, 쇠사슬로 막힌 동굴. 안에서 낮게 웅웅대는 소리.",'sea'],
+"0,1":["어시장","좌판의 생선들이 모두 입을 벌리고 있다. 상인들의 눈동자가 비늘처럼 번들거린다.",'town'],
+"1,1":["골목","좁은 골목. 담벼락마다 분필로 그린 동그라미.",'town'],
+"2,1":["놀이터","그네가 바람도 없이 흔들린다. 미끄럼틀 아래에 무언가 웅크리고 있다.",'town'],
+"3,1":["지하주차장","차 안에 사람들이 앉아 있다. 모두 운전석 옆 창문, 벽 쪽을 보고 있다.",'bld'],
+"0,2":["교회","문 닫은 작은 교회. 십자가 대신 동그란 자국이 남아 있다.",'town'],
+"1,2":["버스정류장","당신이 내린 곳. 시간표에 '막차 23:40'. 수아가 사라진 지 사흘째.",'town'],
+"2,2":["101동 로비","우편함이 전부 열려 있다. 편지 대신 젖은 모래가 차 있다.",'bld'],
+"3,2":["101동 계단","계단 벽에 손자국이 위로, 위로 이어진다. 층수 표시가 가끔 하나씩 빠진다.",'bld'],
+"4,2":["옥상","해월동과 바다가 한눈에 보인다.",'bld'],
+"0,3":["슈퍼","주인 없는 슈퍼. 계산대 위에 '무서우면 가져가세요'.",'town'],
+"1,3":["관리사무소","관리인 박 씨가 라디오 잡음을 듣고 있다.",'bld'],
+"2,3":["102동 로비","엘리베이터가 '5'에 멈춰 있다. 버튼을 누르지 않았는데 문이 열렸다 닫힌다.",'bld'],
+"3,3":["수아의 집 503호","동생 수아의 원룸. 문이 열려 있다.",'bld'],
+"1,4":["공중전화","낡은 공중전화 부스. 수화기가 내려진 채 흔들린다.",'town'],
+"2,4":["경로당","노인들이 벽을 향해 일렬로 앉아 낮게 노래한다.",'town'],
+"3,4":["보일러실","뜨겁고 습하다. 배관 사이 벽에 커다란 구멍.",'bld']};
+const ABBR={"등대":"등","해변":"해","방파제":"방","동굴 입구":"굴","어시장":"시","골목":"골","놀이터":"놀","지하주차장":"주","교회":"교","버스정류장":"정","101동 로비":"1로","101동 계단":"계","옥상":"옥","슈퍼":"슈","관리사무소":"관","102동 로비":"2로","수아의 집 503호":"집","공중전화":"전","경로당":"경","보일러실":"보"};
+// fixed story events: return event or null
+function story(k){const f=S.flags,v=f["seen_"+k];
+ const E=(t,c)=>({t,c});
+ switch(k){
+ case "1,2": if(S.turn>=8)return E("막차가 들어온다. 운전기사는 고개를 돌리지 않는다.",[
+   {t:"이대로 탄다 (탈출)",go:()=>end(f.mina?"mina":"alone")},{t:"아직 떠날 수 없다",go:()=>"버스가 떠난다. 다음 막차는 내일이다... 아마도."}]);break;
+ case "0,0": if(!v)return E("등대지기의 책상 위에 젖은 노트가 펼쳐져 있다.",[
+   {t:"노트를 읽는다",go:()=>"조수 시간이 빼곡하다. 맨 아래, 붉은 글씨: '만조. 큰 구멍 열림. 듣지 말 것.'"+addClue("tide")+dmg(0,5)}]);break;
+ case "2,0": if(!f.shape&&S.clues.length>=2)return E("벽의 구멍 하나가 이상하게 익숙하다. 어깨의 기울기, 왼손 약지의 굽은 각도. 당신의 모양이다.",[
+   {t:"구멍에 손을 넣어 본다",ck:["정신",13],ok:()=>{f.shape=1;return "손이 꼭 맞는다. 겨우 손을 뺐다. 안쪽에서 누군가 아쉬워했다."+dmg(0,10)},no:()=>{f.shape=1;return "몸이 반쯤 들어갔다가 겨우 빠져나왔다. 피부에 콘크리트 결이 찍혀 있다."+dmg(2,20)+quirk("구멍의 기억")}},
+   {t:"시멘트 조각으로 구멍을 메운다",go:()=>{f.shape=1;f.sealed=(f.sealed||0)+1;return "손이 떨렸지만 메웠다. 벽 안쪽에서 긁는 소리가 났다."+dmg(0,8)}},
+   {t:"보지 않은 척 지나간다",go:()=>{f.shape=1;return "등 뒤에서 구멍이 당신을 부르는 소리가 들렸다."+dmg(0,4)}}]);break;
+ case "3,0": return cave();
+ case "2,1": if(!v)return E("미끄럼틀 아래, 열 살쯤 된 여자아이가 귀를 막고 있다. '엄마가 벽으로 들어갔어요. 저도 불러요.'",[
+   {t:"'같이 가자.' 데려간다",go:()=>{f.mina=1;return "미나가 당신 옷자락을 꽉 잡는다. 아이는 노래를 싫어한다."}},
+   {t:"관리사무소에 가 있으라고 한다",go:()=>{f.minaPark=1;return "미나가 고개를 끄덕이고 달려간다."}},
+   {t:"못 본 척한다",go:()=>{f.minaLeft=1;return "뒤에서 아이가 콧노래를 시작했다. 아까 그 노래였다."+dmg(0,6)}}]);break;
+ case "3,1": if(!has("쇠파이프"))return E("기둥 옆에 쇠파이프가 떨어져 있다. 가장 가까운 차 안의 남자가 천천히 고개를 돌린다.",[
+   {t:"파이프를 집고 물러선다",ck:["관찰",10],ok:()=>{addItem("쇠파이프");return "파이프를 챙겼다. 남자는 다시 벽을 본다. (공격력 +2)"},no:()=>{addItem("쇠파이프");return "남자가 문을 열고 나와 당신 팔을 문다. 이빨 자국이 동그랗다. (공격력 +2)"+dmg(2,6)}},
+   {t:"그냥 나간다",go:()=>"남자의 시선이 등에 닿는다."}]);break;
+ case "0,2": if(!v)return E("제단 아래 서랍. 1972년 주보와 부적 하나.",[
+   {t:"기록을 읽는다",go:()=>{addItem("부적");return "'해월동 주민 열세 명 실종. 벽에 그들의 모양. 신부님이 노래를 거꾸로 불러 닫다.' 부적도 챙겼다. (정신 판정 +2)"+addClue("rec")}}]);break;
+ case "4,2": if(!cl("sea"))return E("바다를 내려다본다. 수면 아래 무언가 거대하다.",[
+   {t:"끝까지 본다",ck:["정신",11],ok:()=>"바다 밑에 마을만 한 나선형 구멍. 해월동 전체가 그 가장자리다."+addClue("sea")+dmg(0,8),no:()=>"나선이 눈 안으로 감겨 들어온다. 한참 뒤 정신을 차렸다."+addClue("sea")+dmg(0,18)+quirk("나선 잔상")},
+   {t:"눈을 돌린다",go:()=>"보지 않는 편이 나을지도 모른다."}]);break;
+ case "0,3": if(!has("손전등"))return E("계산대에 손전등, 진정제 한 통.",[{t:"둘 다 챙긴다",go:()=>{addItem("손전등");addItem("진정제");return "손전등(관찰 +2)과 진정제를 얻었다."}}]);break;
+ case "1,3": if(!f.parkDone)return E(`박 씨가 라디오를 끈다. '여기 사람 아니죠? 그 동굴 열쇠는 내가 갖고 있소.'${f.minaPark?" 미나가 그의 뒤에 숨어 있다.":""}`,[
+   {t:"솔직하게 동생 이야기를 한다",ck:["관찰",11],ok:()=>{f.parkDone=1;addItem("동굴 열쇠");return "박 씨가 한숨을 쉰다. '내 아내도 저기 있소.' 열쇠를 건넨다."},no:()=>{f.parkDone=1;return "'단서도 없이 들어가면 죽소.' 그는 열쇠를 주지 않는다."}},
+   {t:"그가 한눈판 사이 열쇠를 훔친다",ck:["관찰",12],ok:()=>{f.parkDone=1;f.betray=1;addItem("동굴 열쇠");return "열쇠를 주머니에 넣었다. 박 씨가 라디오를 다시 켠다. 잡음 속에 당신 이름이 섞여 있다."},no:()=>{f.parkDone=1;f.betray=1;return "들켰다. 박 씨가 아무 말 없이 당신을 본다. 그 눈은 구멍 같다."+dmg(0,10)}},
+   ...(f.minaPark?[{t:"미나를 데려간다",go:()=>{f.mina=1;f.minaPark=0;return "미나가 박 씨에게 꾸벅 인사하고 당신 손을 잡는다."}}]:[]),
+   {t:"나중에 오겠다",go:()=>"박 씨가 라디오를 다시 켠다."}]);break;
+ case "3,3": if(!v)return E("방 벽에 수아 키만 한 구멍. 책상 위에 일기장.",[
+   {t:"일기를 읽는다",go:()=>"'벽에 내 모양이 생겼어. 밤마다 동굴에서 나를 불러. 오빠한테 말하면 오빠 모양도 생길까 봐 무서워.'"+addClue("diary")+dmg(0,8)},
+   {t:"구멍에 귀를 댄다",ck:["정신",12],ok:()=>"아주 멀리서 수아 목소리. '오빠, 노래...거꾸로...'"+addClue("diary"),no:()=>"수아의 목소리가 당신 목소리로 바뀐다."+addClue("diary")+dmg(0,15)+quirk("환청")}]);break;
+ case "2,4": if(!cl("song"))return E("노인들이 같은 노래를 끝없이 부른다. 가사는 바닷소리 같다.",[
+   {t:"가만히 앉아 노래를 외운다",ck:["정신",12],ok:()=>"가사를 거꾸로 머릿속에 새겼다."+addClue("song")+dmg(0,8),no:()=>"정신을 차리니 당신도 따라 부르고 있었다. 가사는 외웠다."+addClue("song")+dmg(0,20)},
+   {t:"녹음만 하고 나간다",go:()=>"휴대폰에 녹음했다. 거꾸로 재생하니 비명이다."+addClue("song")+dmg(0,12)}]);break;
+ case "3,4": if(!v)return E("벽의 구멍에서 무언가 기어 나온다. 사람이었던 것. 관절이 전부 둥글게 휘어 있다.",[
+   {t:"파이프/주먹으로 맞선다",ck:["힘",13],ok:()=>{addItem("진정제");return "그것이 다시 구멍으로 빨려 들어갔다. 바닥에 진정제 한 통."},no:()=>"그것이 당신을 끌어안았다. 겨우 뿌리쳤다."+dmg(4,10)},
+   {t:"도망친다",ck:["관찰",11],ok:()=>"문을 닫았다. 문 너머에서 문을 '모양대로' 긁는다."+dmg(0,5),no:()=>"발목을 잡혔다."+dmg(3,8)}]);break;
+ case "1,4": if(!f.phone)return E("공중전화가 울린다.",[
+   {t:"받는다",go:()=>{f.phone=1;return "'오빠... 오지 마. 아니, 와. 와서 맞춰 줘.' 수아의 목소리 뒤로 파도."+dmg(0,8)}},
+   {t:"수화기를 내려놓는다",go:()=>{f.phone=1;return "벨이 멈추자 부스 유리에 손바닥 자국이 생겼다. 안쪽에서."}}]);break;
+ }return null;}
+function cave(){const f=S.flags;
+ if(!has("동굴 열쇠")&&!f.chainBroken)return {t:"쇠사슬이 동굴을 막고 있다.",c:[
+  {t:"쇠사슬을 부순다",ck:["힘",14],ok:()=>{f.chainBroken=1;return "쇠사슬이 끊어졌다. 다시 들어가 보자."},no:()=>"손바닥이 찢어졌다."+dmg(2,0)},{t:"물러난다",go:()=>"웅웅거림이 당신을 따라온다."}]};
+ if(f.betray&&!f.parkFaced)return {t:"어둠 속에서 박 씨가 나타난다. 손에 갈고리. '열쇠 도둑.'",c:[
+  {t:"맞선다",ck:["힘",13],ok:()=>{f.parkFaced=1;return "박 씨를 밀쳐냈다. 그는 울며 바다로 걸어 들어갔다."+dmg(1,10)},no:()=>end("betray")},
+  {t:"사과한다",ck:["정신",14],ok:()=>{f.parkFaced=1;return "'...아내를 찾으면 말해 주시오.' 그가 길을 비킨다."},no:()=>end("betray")}]};
+ const b=(f.mina?3:0)+(f.sealed||0)+(f.wetTrust?2:0);
+ return {t:`동굴 끝, 벽 전체가 하나의 거대한 나선 구멍이다. 수아가 그 안에 반쯤 박혀 있다. 눈을 뜨고, 웃고 있다. 구멍이 당신의 이름을 부른다.${f.mina?"\n미나가 당신 손을 꽉 쥔다.":""}`,c:[
+  ...(cl("song")?[{t:`노래를 거꾸로 부른다 (보너스 +${b})`,ck:["정신",14,b],ok:()=>end(S.clues.length>=4?"truth":"half"),no:()=>end("caller")}]:[]),
+  {t:"수아를 억지로 끌어낸다",ck:["힘",15,f.mina?1:0],ok:()=>end("twoescape"),no:()=>end("drown")},
+  {t:"수아 대신 내가 들어간다",go:()=>end("sacrifice")},
+  {t:"부름에 대답한다",go:()=>end("caller")},
+  {t:"돌아선다",go:()=>"아직은 아니다. 수아가 웃는다."}]};}
+// random events
+const RE=[
+ {w:3,t:"누군가 뒤에서 당신의 이름을 부른다. 수아 목소리 같다.",c:[
+  {t:"돌아본다",ck:["정신",12],ok:()=>"아무도 없다. 벽에 동그란 젖은 자국.",no:()=>"벽에서 얼굴 하나가 쑥 들어갔다."+dmg(0,12)+quirk("환청")},
+  {t:"무시하고 걷는다",go:()=>"소리가 한참 따라오다 멈췄다."+dmg(0,4)},
+  {t:"거꾸로 된 노래로 대답한다",cond:()=>cl("song"),go:()=>"소리가 비명으로 바뀌고 사라졌다."+dmg(0,-6)}]},
+ {w:3,t:"벽에 방금 생긴 듯한 작은 구멍. 축축하다.",c:[
+  {t:"들여다본다",ck:["관찰",11],ok:()=>"구멍 너머로 방파제가 보인다. 모든 구멍은 동굴로 이어져 있다."+dmg(0,4),no:()=>"눈 하나가 마주 본다. 당신 눈이다."+dmg(0,12)},
+  {t:"테이프로 막는다",go:()=>{S.flags.sealed=(S.flags.sealed||0)+1;return "막았다. 이상하게 마음이 놓인다. (최종 판정 보너스 +1)"}},
+  {t:"지나간다",go:()=>"구멍이 조금 커진 것 같다."}]},
+ {w:2,once:"wet",t:"흠뻑 젖은 양복 차림의 남자가 다가온다. '혹시... 구멍 보셨어요?'",c:[
+  {t:"솔직히 봤다고 한다",go:()=>{S.flags.wetTrust=1;return "'저도요. 노래는 숨을 들이쉴 때 부르세요.' 그는 바다 쪽으로 걸어간다. (최종 판정 +2)"}},
+  {t:"못 봤다고 한다",go:()=>{S.flags.wetLie=1;return "'거짓말.' 그의 입이 동그랗게 벌어진다."+dmg(0,8)}},
+  {t:"도망친다",ck:["힘",10],ok:()=>"뿌리쳤다.",no:()=>"넘어졌다."+dmg(2,4)}]},
+ {w:2,once:"shell",tag:"sea",t:"발치에 나선 무늬 조개 하나. 귀에 대면 노래가 들린다.",c:[
+  {t:"주머니에 넣는다",go:()=>{addItem("나선 조개");return "정신 판정 +2. 하지만 이동할 때마다 이성이 조금씩 샌다."+quirk("조개의 속삭임")}},
+  {t:"바다에 던진다",go:()=>"조개가 가라앉으며 '왜' 하고 물었다."+dmg(0,3)}]},
+ {w:2,once:"hand",t:"손가락 끝이 가렵다. 보니 작은 동그란 구멍이 나 있다. 아프지 않다.",c:[
+  {t:"진정제를 먹고 잊는다",cond:()=>has("진정제"),go:()=>{S.items.splice(S.items.indexOf("진정제"),1);return "구멍이 메워졌다... 메워진 것 같다."+dmg(0,-10)}},
+  {t:"바늘로 파낸다",ck:["힘",12],ok:()=>"모래가 한 줌 나왔다. 구멍이 닫혔다."+dmg(1,6),no:()=>"더 깊었다."+dmg(3,10)+quirk("구멍난 손")},
+  {t:"내버려 둔다",go:()=>quirk("구멍난 손")+"\n(공격력 -1)"}]},
+ {w:2,tag:"bld",t:"갑자기 정전. 칠흑 속에서 무언가 바닥을 미끄러진다.",c:[
+  {t:"손전등을 켠다",cond:()=>has("손전등"),go:()=>"빛 속에서 그것이 구멍으로 되돌아갔다."},
+  {t:"벽을 짚고 나아간다",ck:["관찰",13],ok:()=>"무사히 빠져나왔다.",no:()=>"벽이 당신 손을 잡았다."+dmg(2,8)},
+  {t:"숨죽이고 기다린다",go:()=>{S.turn+=2;return "한참 뒤 불이 들어왔다. 바닥에 젖은 발자국이 당신 주위를 맴돌았다. (턴 +2)"+dmg(0,6)}}]},
+ {w:2,tag:"town",t:"아이들이 둥글게 서서 노래한다. 가운데에는 아무도 없다. 아니, 동그란 구멍이 있다.",c:[
+  {t:"원을 깨뜨린다",ck:["힘",11],ok:()=>"아이들이 흩어졌다. 구멍은 그냥 물웅덩이였다.",no:()=>"아이들이 당신 손을 잡고 원에 넣었다. 겨우 빠져나왔다."+dmg(1,12)},
+  {t:"멀리 돌아간다",go:()=>"노래가 한 소절 당신 입에 남았다."+dmg(0,5)}]},
+ {w:2,tag:"bld",t:"배수구에서 바닷물이 솟는다. 머리카락이 섞여 있다.",c:[
+  {t:"머리카락을 살핀다",ck:["관찰",12],ok:()=>"수아의 머리끈이 엉켜 있다. 아직 따뜻하다. 수아는 살아 있다."+dmg(0,-5),no:()=>"머리카락이 손가락을 감았다."+dmg(1,8)},
+  {t:"피한다",go:()=>"신발이 젖었다. 계속 젖어 있다."}]},
+ {w:2,t:"유리창에 비친 당신이 한 박자 늦게 움직인다.",c:[
+  {t:"멈춰서 지켜본다",ck:["정신",12],ok:()=>"결국 맞춰졌다. 기분 탓이다.",no:()=>"비친 당신이 먼저 웃었다."+dmg(0,14)+quirk("늦은 그림자")},
+  {t:"눈을 감고 지나간다",go:()=>"눈꺼풀 안쪽에도 동그라미가 떠 있다."+dmg(0,4)}]},
+ {w:2,once:"cult",t:"흰 옷의 여자가 웃는다. '열쇠가 필요하죠? 대신 당신 모양을 조금만 주세요.'",c:[
+  {t:"거래한다",cond:()=>!has("동굴 열쇠"),go:()=>{addItem("동굴 열쇠");return "열쇠를 받았다. 손바닥에 동그란 자국이 남았다."+dmg(0,20)+quirk("빌려준 모양")}},
+  {t:"거절한다",go:()=>"'곧 공짜로 주게 될 거예요.'"},
+  {t:"밀쳐낸다",ck:["힘",12],ok:()=>"그녀는 웃으며 벽 속으로 들어갔다.",no:()=>"그녀의 손이 차갑다."+dmg(2,6)}]},
+ {w:2,t:"이상하게 조용한 순간. 잠깐 쉴 수 있을 것 같다.",c:[
+  {t:"앉아서 쉰다",go:()=>{S.turn+=3;return "숨을 골랐다. (턴 +3)"+dmg(-3,-5)}},
+  {t:"진정제를 먹는다",cond:()=>has("진정제"),go:()=>{S.items.splice(S.items.indexOf("진정제"),1);return "머리가 맑아진다."+dmg(0,-20)}},
+  {t:"계속 간다",go:()=>"시간이 없다."}]},
+ {w:1,once:"text",t:"휴대폰에 수아의 문자. '오빠 지금 내 옆에 있지?'",c:[
+  {t:"'어디야?' 답장한다",go:()=>"'오빠 모양 옆.' 사진이 온다. 벽의 구멍 두 개."+dmg(0,10)},
+  {t:"휴대폰을 끈다",go:()=>"꺼진 화면에 당신 뒤의 벽이 비친다."+dmg(0,4)}]},
+ {w:3,tag:"sea",t:"파도가 발목까지 밀려온다. 물이 당신을 끌어당긴다.",c:[
+  {t:"버틴다",ck:["힘",11],ok:()=>"물이 아쉬운 듯 물러났다.",no:()=>"넘어져 한참 끌려갔다."+dmg(3,6)},
+  {t:"높은 곳으로 뛴다",ck:["관찰",10],ok:()=>"제때 피했다.",no:()=>"젖은 모래에 발자국 대신 구멍이 남았다."+dmg(1,8)}]}
+];
+function randEv(tag){if(Math.random()>0.45)return null;
+ const pool=RE.filter(e=>(!e.tag||e.tag==tag)&&!(e.once&&S.flags["once_"+e.once]));
+ let tot=pool.reduce((a,e)=>a+e.w,0),r=Math.random()*tot;
+ for(const e of pool){if((r-=e.w)<0){if(e.once)S.flags["once_"+e.once]=1;return e;}}return null;}
+// render
+function distort(t){if(S.san>=50)return t;const p=(50-S.san)/110;
+ return [...t].map(ch=>ch.trim()&&Math.random()<p?["◯","ㅇ","구멍","…",ch+ch][Math.floor(Math.random()*5)]:ch).join("");}
+function render(){
+ const tide=MAXT-S.turn;
+ $("stats").innerHTML=`<span class=b>HP ${S.hp}/${S.maxhp}</span><span>공격력 ${S.atk}</span><span class=s>이성 ${S.san}</span><span class=t>턴 ${S.turn} · 만조까지 ${tide}</span>`+
+  `<span>소지품: ${S.items.join(", ")||"없음"}</span>`+(S.quirks.length?`<span class=q>증상: ${S.quirks.join(", ")}</span>`:"");
+ let m="";for(let y=0;y<H;y++){let row="";for(let x=0;x<W;x++){const k=x+","+y,g=G[k];
+  let c=!g?"    ":(x==S.x&&y==S.y)?"[@ ]":S.vis[k]?"["+ABBR[g[0]].padEnd(2," ").slice(0,2)+"]":"[ ?]";
+  if(g&&!(x==S.x&&y==S.y)&&S.vis[k]&&ABBR[g[0]].length==1)c="["+ABBR[g[0]]+"]";row+=c+" ";}m+=row+"\n";}
+ $("map").textContent=m+"현재: "+G[S.x+","+S.y][0]+"   목표: 수아를 찾고 '부름'의 정체를 밝혀라";
+ $("clues").innerHTML=S.clues.length?S.clues.map(c=>"· "+CLUE[c]).join("<br>"):"아직 없음. (단서 5개 중 4개 이상 + '부름의 노래'가 진실 엔딩의 열쇠)";
+ const got=JSON.parse(localStorage.getItem("hw-ends")||"[]");
+ $("ends").innerHTML=`발견한 엔딩 ${got.length}/${Object.keys(END).length}<br>`+Object.keys(END).map(k=>got.includes(k)?"· "+END[k][0]:"· ???").join("<br>");
+}
+function show(scene,out){$("scene").textContent=distort(scene);$("out").innerHTML=out||"";render();}
+function fmt(t){return (t||"").split("\n").map(l=>l.startsWith("[")?`<span class=roll>${l}</span>`:distort(l)).join("<br>");}
+function present(ev,out){S.ev=ev;show(ev.t,out);const ch=$("ch");ch.innerHTML="";
+ const cs=ev.c.filter(c=>!c.cond||c.cond());
+ if(S.san<35&&Math.random()<0.6+(S.quirks.includes("환청")?0.3:0))cs.splice(Math.floor(Math.random()*(cs.length+1)),0,{h:1,t:distort("벽 속의 누군가가 손짓한다. 따라간다"),go:()=>"아무도 없었다. 당신은 벽을 한참 쓰다듬고 있었다."+dmg(1,8)});
+ cs.forEach(c=>{const b=document.createElement("button");if(c.h)b.className="h";
+  let label=c.t;if(c.ck){const m=mod(c.ck[0])+(c.ck[2]||0),p=Math.max(5,Math.min(95,(21-(c.ck[1]-m))*5));label+=`  〔${c.ck[0]} DC${c.ck[1]}, 보정 ${m>=0?"+":""}${m}, 약 ${p}%〕`;}
+  b.textContent=label;b.onclick=()=>choose(c);ch.appendChild(b);});
+ $("mv").style.display="none";}
+function choose(c){if(S.over)return;let t;
+ if(c.ck){const r=check(c.ck[0],c.ck[1],c.ck[2]||0);const res=r.ok?c.ok():c.no();if(S.over)return;t=r.txt+"\n"+res;}else{t=c.go();if(S.over)return;}
+ S.flags["seen_"+S.x+","+S.y]=1;S.ev=null;if(post())return;idle(fmt(t));}
+function post(){if(S.hp<=0){end("dead");return 1}if(S.san<=0){end(S.flags.shape?"shape":"spiral");return 1}if(S.turn>=MAXT){end("tide");return 1}return 0}
+function idle(out){const k=S.x+","+S.y;const ev=story(k);if(ev&&!S.over)return present(ev,out);
+ show(G[k][1],out);$("ch").innerHTML="";$("mv").style.display="grid";save();}
+function move(dx,dy){if(S.over||S.ev)return;const nx=S.x+dx,ny=S.y+dy,k=nx+","+ny;
+ if(!G[k])return show(G[S.x+","+S.y][1],"그쪽으로는 길이 없다.");
+ S.x=nx;S.y=ny;S.turn++;S.vis[k]=1;let out="";
+ if(has("나선 조개"))out+=dmg(0,2);if(S.san<40&&Math.random()<0.3)out+="\n눈 끝에서 벽이 숨을 쉰다."+dmg(0,1);
+ if(post())return;
+ if(!story(k)){const r=randEv(G[k][2]);if(r&&!(k=="3,0")){return present(r,fmt(G[k][1]+out));}}
+ idle(fmt(out.trim()));}
+function end(k){S.over=1;const got=JSON.parse(localStorage.getItem("hw-ends")||"[]");if(!got.includes(k))got.push(k);localStorage.setItem("hw-ends",JSON.stringify(got));
+ localStorage.removeItem("hw-save");$("scene").innerHTML=`<div class=end>엔딩: ${END[k][0]}</div>`;$("out").textContent=END[k][1];
+ $("ch").innerHTML="";const b=document.createElement("button");b.textContent="다시 시작";b.onclick=newGame;$("ch").appendChild(b);$("mv").style.display="none";render();return "";}
+function save(){localStorage.setItem("hw-save",JSON.stringify(S));}
+function newGame(){S={x:1,y:2,hp:10,maxhp:10,atk:3,san:100,items:[],clues:[],quirks:[],flags:{},turn:0,vis:{"1,2":1},ev:null,over:0};
+ show("","");idle(fmt("동생 수아가 바닷가 아파트 단지 해월동에서 사라졌다. 마지막 문자는 '벽에서 내 이름이 들려'.\n목표: 수아를 찾고, 마을을 부르는 '구멍'의 정체를 밝혀라. 만조(턴 70) 전에.\n단서를 모으고, 지도의 칸을 하나씩 이동하세요."));}
+$("mv").innerHTML=`<span></span><button onclick="move(0,-1)">북 ↑</button><span></span><button onclick="move(-1,0)">서 ←</button><span></span><button onclick="move(1,0)">동 →</button><span></span><button onclick="move(0,1)">남 ↓</button>`;
+document.addEventListener("keydown",e=>{const m={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]}[e.key];if(m){e.preventDefault();move(...m);}
+ else if(/^[1-9]$/.test(e.key)){const b=$("ch").querySelectorAll("button")[e.key-1];if(b)b.click();}});
+(function(){const s=localStorage.getItem("hw-save");if(s){try{S=JSON.parse(s);S.ev=null;S.over=0;idle("(이어서 진행)");return}catch(e){}}newGame();})();
+</script></body></html>
